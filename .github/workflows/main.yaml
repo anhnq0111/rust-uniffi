@@ -35,6 +35,7 @@ jobs:
     build_ios:
       name: Build iOS
       runs-on: macos-latest
+      needs: build_and_check
       if: github.event.pull_request.draft == false
 
       steps:
@@ -64,6 +65,7 @@ jobs:
     build_android:
       name: "Build Android"
       runs-on: macos-latest
+      needs: build_and_check
       if: github.event.pull_request.draft == false
 
       steps:
