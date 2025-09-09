@@ -30,6 +30,7 @@ jobs:
       - name: Install the Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
+          target: aarch64-linux-android, armv7-linux-androideabi, aarch64-apple-ios, x86_64-apple-ios
           components: rustfmt, clippy
 
       - name: Cargo Check
@@ -41,11 +42,24 @@ jobs:
       - name: Run clippy
         run: cargo clippy --all-targets -- -D warnings
 
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
+
+      - name: Setup NDK
+        uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r26d
+          add-to-path: false
+          local-cache: true
+
       - name: Run build for all targets
         run: |
-          rustup target add aarch64-apple-ios x86_64-apple-ios \
-          aarch64-linux-android armv7-linux-androideabi
-          
           cargo build --release --target=aarch64-apple-ios
           cargo build --release --target=x86_64-apple-ios
           cargo build --release --target=armv7-linux-androideabi
