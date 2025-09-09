@@ -2,87 +2,104 @@ name: App Tracking SDK Workflow
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   pull_request:
-    branches:
-      - main
+    branches: [main]
 
 jobs:
-    build_and_check:
-      name: Build and Check
-      runs-on: ubuntu-22.04
-      steps:
-        - uses: actions/checkout@v4
-        - name: Install the Rust toolchain
-          uses: actions-rust-lang/setup-rust-toolchain@v1
-          with:
-            components: rustfmt
-        - name: Enforce formatting
-          run: cargo fmt --check
+  build_and_check:
+    name: Build and Check
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
 
-    build_ios:
-      name: Build iOS
-      runs-on: macos-latest
-      if: github.event.pull_request.draft == false
+      - name: Set up Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: rustfmt
 
-      steps:
-        - uses: actions/checkout@v3
-        - name: Build
-          run: |
-            cargo install cargo-swift --version 0.9.0
-            cargo swift package -p ios -r --lib-type static -y
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
 
-        - name: "Upload ios artifacts"
-          uses: actions/upload-artifact@v4
-          with:
-            name: MathSdk
-            path: MathSdk
+      - name: Enforce formatting
+        run: cargo fmt --check
 
-    build_android:
-      name: "Build Android"
-      runs-on: macos-latest
-      if: github.event.pull_request.draft == false
+  build_ios:
+    name: Build iOS
+    runs-on: macos-latest
+    if: github.event.pull_request.draft == false
 
-      steps:
-        - uses: actions/checkout@v3
-        - uses: actions/setup-java@v3
-          with:
-            distribution: 'temurin'
-            java-version: '17'
+    steps:
+      - uses: actions/checkout@v4
 
-        - name: Install cargo-ndk
-          run: |
-            cargo install cargo-ndk
+      - name: Set up Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
 
-        - name: Install Rust toolchain
-          uses: dtolnay/rust-toolchain@stable
-          with:
-            toolchain: stable
-            targets: aarch64-linux-android, armv7-linux-androideabi, x86_64-linux-android, i686-linux-android
+      - name: Build iOS static library
+        run: |
+          cargo install cargo-swift --version 0.9.0
+          cargo swift package -p ios -r --lib-type static -y
 
-        - name: Setup NDK
-          uses: nttld/setup-ndk@v1
-          id: setup-ndk
-          with:
-            ndk-version: r26d
-            add-to-path: 'false'
+      - name: Upload iOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: MathSdk
+          path: MathSdk
 
-        - name: Run cargo-ndk
-          env:
-            ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
-          run: |
-            cargo ndk -t armeabi-v7a -t arm64-v8a -o ./jniLibs build --release
-            cargo run --features=uniffi/cli --bin uniffi_bindgen generate --library ./jniLibs/armeabi-v7a/libmath.so --language kotlin --out-dir ./bindings --no-format
+  build_android:
+    name: Build Android
+    runs-on: macos-latest
+    if: github.event.pull_request.draft == false
 
-        - name: Add bindings and lib to one folder
-          run: |
-            mkdir android
-            mv ./jniLibs ./android/jniLibs
-            mv ./bindings ./android/bindings
+    steps:
+      - uses: actions/checkout@v4
 
-        - name: "Upload android artifacts"
-          uses: actions/upload-artifact@v4
-          with:
-            name: android-artifacts
-            path: android
+      - name: Set up Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk
+
+      - name: Set up Rust and targets
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          targets: aarch64-linux-android, armv7-linux-androideabi, x86_64-linux-android, i686-linux-android
+
+      - name: Setup NDK
+        uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r26d
+          add-to-path: false
+
+      - name: Build with cargo-ndk & generate bindings
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+        run: |
+          cargo ndk -t armeabi-v7a -t arm64-v8a -o ./jniLibs build --release
+          cargo run --features=uniffi/cli --bin uniffi_bindgen generate \
+            --library ./jniLibs/armeabi-v7a/libmath.so \
+            --language kotlin --out-dir ./bindings --no-format
+
+      - name: Organize Android artifacts
+        run: |
+          mkdir -p android
+          mv ./jniLibs ./android/jniLibs
+          mv ./bindings ./android/bindings
+
+      - name: Upload Android artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-artifacts
+          path: android
