@@ -9,115 +9,127 @@ on:
       - main
 
 jobs:
-    build_and_check:
-      name: Build and Check
-      runs-on: ubuntu-22.04
-      steps:
-        - uses: actions/checkout@v4
+  build_and_check:
+    name: Build and Check
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
 
-        - name: Cache cargo
-          uses: actions/cache@v4
-          with:
-            path: |
-              ~/.cargo/registry
-              ~/.cargo/git
-              target
-            key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-            restore-keys: ${{ runner.os }}-cargo-
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
 
-        - name: Install the Rust toolchain
-          uses: actions-rust-lang/setup-rust-toolchain@v1
-          with:
-            components: rustfmt
-        - name: Enforce formatting
-          run: cargo fmt --check
+      - name: Install the Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: rustfmt, clippy
 
-    build_ios:
-      name: Build iOS
-      runs-on: macos-latest
-      needs: build_and_check
-      if: github.event.pull_request.draft == false
+      - name: Cargo Check
+        run: cargo check
 
-      steps:
-        - uses: actions/checkout@v3
+      - name: Enforce formatting
+        run: cargo fmt --check
 
-        - name: Cache cargo
-          uses: actions/cache@v3
-          with:
-            path: |
-              ~/.cargo/registry
-              ~/.cargo/git
-              target
-            key: ios-cargo-${{ hashFiles('**/Cargo.lock') }}
-            restore-keys: ios-cargo-
+      - name: Run clippy
+        run: cargo clippy --all-targets -- -D warnings
 
-        - name: Build
-          run: |
-            cargo install cargo-swift --version 0.9.0
-            cargo swift package -p ios -r --lib-type static -y
+  build_ios:
+    name: Build iOS
+    runs-on: macos-latest
+    needs: build_and_check
+    if: github.event.pull_request.draft == false
 
-        - name: "Upload ios artifacts"
-          uses: actions/upload-artifact@v4
-          with:
-            name: ios-artifacts
-            path: MathSdk
+    steps:
+      - uses: actions/checkout@v4
 
-    build_android:
-      name: "Build Android"
-      runs-on: macos-latest
-      needs: build_and_check
-      if: github.event.pull_request.draft == false
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
 
-      steps:
-        - uses: actions/checkout@v3
+      - name: Build
+        run: |
+          cargo install cargo-swift --version 0.9.0 --locked
+          cargo swift package -p ios -r --lib-type static -y
 
-        - name: Cache cargo
-          uses: actions/cache@v3
-          with:
-            path: |
-              ~/.cargo/registry
-              ~/.cargo/git
-              target
-            key: android-cargo-${{ hashFiles('**/Cargo.lock') }}
-            restore-keys: android-cargo-
+      - name: Upload ios artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-artifacts
+          path: MathSdk
 
-        - uses: actions/setup-java@v3
-          with:
-            distribution: 'temurin'
-            java-version: '17'
+  build_android:
+    name: Build Android
+    runs-on: ubuntu-22.04
+    needs: build_and_check
+    if: github.event.pull_request.draft == false
 
-        - name: Install cargo-ndk
-          run: |
-            cargo install cargo-ndk
+    steps:
+      - uses: actions/checkout@v4
 
-        - name: Install Rust toolchain
-          uses: dtolnay/rust-toolchain@stable
-          with:
-            toolchain: stable
-            targets: aarch64-linux-android, armv7-linux-androideabi, x86_64-linux-android, i686-linux-android
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
 
-        - name: Setup NDK
-          uses: nttld/setup-ndk@v1
-          id: setup-ndk
-          with:
-            ndk-version: r26d
-            add-to-path: 'false'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
 
-        - name: Run cargo-ndk
-          env:
-            ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
-          run: |
-            cargo ndk -t armeabi-v7a -t arm64-v8a -o ./jniLibs build --release
-            cargo run --features=uniffi/cli --bin uniffi_bindgen generate --library ./jniLibs/armeabi-v7a/libmath.so --language kotlin --out-dir ./bindings --no-format
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
 
-        - name: Add bindings and lib to one folder
-          run: |
-            mkdir android
-            mv ./jniLibs ./android/jniLibs
-            mv ./bindings ./android/bindings
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          target: aarch64-linux-android, armv7-linux-androideabi
 
-        - name: "Upload android artifacts"
-          uses: actions/upload-artifact@v4
-          with:
-            name: android-artifacts
-            path: android
+      - name: Setup NDK
+        uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r26d
+          add-to-path: false
+          local-cache: true
+
+      - name: Run cargo-ndk
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+        run: |
+          cargo ndk -t armeabi-v7a -t arm64-v8a -o ./jniLibs build --release
+          cargo run --features=uniffi/cli --bin uniffi_bindgen generate --library ./jniLibs/armeabi-v7a/libmath.so --language kotlin --out-dir ./bindings --no-format
+
+      - name: Add bindings and lib to one folder
+        run: |
+          mkdir android
+          mv ./jniLibs ./android/jniLibs
+          mv ./bindings ./android/bindings
+
+      - name: Upload android artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-artifacts
+          path: android
