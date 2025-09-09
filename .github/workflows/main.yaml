@@ -36,6 +36,7 @@ jobs:
         - name: "Upload ios artifacts"
           uses: actions/upload-artifact@v4
           with:
+            name: MathSdk
             path: MathSdk
 
     build_android:
@@ -83,4 +84,5 @@ jobs:
         - name: "Upload android artifacts"
           uses: actions/upload-artifact@v4
           with:
+            name: android-artifacts
             path: android
