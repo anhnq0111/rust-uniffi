@@ -1,0 +1,89 @@
+name: App Tracking SDK Workflow
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+    build_and_check:
+      name: Build and Check
+      runs-on: ubuntu-22.04
+      steps:
+        - uses: actions/checkout@v4
+        - name: Install the Rust toolchain
+          uses: actions-rust-lang/setup-rust-toolchain@v1
+          with:
+            components: rustfmt
+        - name: Enforce formatting
+          run: cargo fmt --check
+  #
+  #  build_ios:
+  #    name: Build iOS
+  #    runs-on: macos-latest
+  #    if: github.event.pull_request.draft == false
+  #
+  #    steps:
+  #      - uses: actions/checkout@v3
+  #      - name: Build
+  #        run: |
+  #          cargo install cargo-swift --version 0.9.0
+  #          cargo swift package -p ios -r --lib-type static -y
+  #
+  #      - name: "Upload ios artifacts"
+  #        uses: actions/upload-artifact@v4
+  #        with:
+  #          name: ios-artifacts
+  #          path: |
+  #            SdkRustAppTracking
+
+    build_android:
+      name: "Build Android"
+      runs-on: macos-latest
+      if: github.event.pull_request.draft == false
+
+      steps:
+        - uses: actions/checkout@v3
+        - name: Install cargo-ndk
+          run: |
+            cargo install cargo-ndk
+
+        - name: Install Rust toolchain
+          uses: dtolnay/rust-toolchain@stable
+          with:
+            toolchain: stable
+            targets: aarch64-linux-android, armv7-linux-androideabi, x86_64-linux-android, i686-linux-android
+
+        - name: Setup Java
+          uses: actions/setup-java@v3
+          with:
+            distribution: "temurin"
+            java-version: "17"
+            cache: "gradle"
+
+        - name: Setup NDK
+          uses: nttld/setup-ndk@v1
+          id: setup-ndk
+          with:
+            ndk-version: r21e
+            add-to-path: 'false'
+          env:
+            ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+
+        - name: Run cargo-ndk
+          env:
+            ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
+          run: |
+            cargo ndk -t armeabi-v7a -t arm64-v8a -o ./jniLibs build --release
+            cargo run --features=uniffi/cli --bin uniffi_bindgen generate --library ./jniLibs/armeabi-v7a/libmath.so --language kotlin --out-dir ./bindings --no-format
+
+        - name: "Upload android artifacts"
+          uses: actions/upload-artifact@v4
+          with:
+            name: android-artifacts
+            path: |
+              jniLibs
+              bindings
