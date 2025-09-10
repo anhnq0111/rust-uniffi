@@ -37,9 +37,10 @@ jobs:
     needs: check_and_lint
 
     steps:
+      - uses: cargo-bins/cargo-binstall@main
       - uses: actions/checkout@v4
       - name: Install cargo-swift
-        run: cargo install cargo-swift --version 0.9.0 --locked
+        run: cargo binstall cargo-swift --version 0.9.0 --locked
 
       - name: Build iOS SDK
         run: cargo swift package -p ios -r --lib-type static -y
@@ -57,6 +58,7 @@ jobs:
     needs: check_and_lint
 
     steps:
+      - uses: cargo-bins/cargo-binstall@main
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with:
@@ -64,7 +66,7 @@ jobs:
           java-version: 17
 
       - name: Install cargo-ndk
-        run: cargo install cargo-ndk --locked
+        run: cargo binstall cargo-ndk --locked
 
       - name: Install Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
