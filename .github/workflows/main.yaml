@@ -1,0 +1,133 @@
+name: App Tracking SDK Workflow
+
+on:
+  pull_request:
+    branches: [ develop, main ]
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  check_and_lint:
+    name: Check
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: rustfmt, clippy
+
+      - name: Cargo Check
+        run: cargo check
+
+      - name: Enforce formatting
+        run: cargo fmt --check
+
+      - name: Run clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+  build_ios:
+    name: Build iOS
+    runs-on: macos-latest
+    if: github.event.pull_request.draft == false || startsWith(github.ref, 'refs/tags/v')
+    needs: check_and_lint
+
+    steps:
+      - uses: cargo-bins/cargo-binstall@main
+      - uses: actions/checkout@v4
+      - name: Install cargo-swift
+        run: cargo binstall cargo-swift --version 0.9.0 --locked
+
+      - name: Build iOS SDK
+        run: cargo swift package -p ios -r --lib-type static -y
+
+      - name: Upload iOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: MathSdk
+          path: MathSdk
+
+  build_android:
+    name: Build Android
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false || startsWith(github.ref, 'refs/tags/v')
+    needs: check_and_lint
+
+    steps:
+      - uses: cargo-bins/cargo-binstall@main
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install cargo-ndk
+        run: cargo binstall cargo-ndk --locked
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          target: aarch64-linux-android, armv7-linux-androideabi, x86_64-linux-android, i686-linux-android
+
+      - name: Setup NDK
+        uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r27d
+          add-to-path: false
+
+      - name: Build Android SDK + bindings
+        run: |
+          cargo ndk -t armeabi-v7a -t arm64-v8a -o ./jniLibs build --release
+          cargo run --features=uniffi/cli --bin uniffi_bindgen generate \
+            --library ./jniLibs/armeabi-v7a/libmath.so \
+            --language kotlin --out-dir ./bindings --no-format
+
+      - name: Upload android artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-artifacts
+          path: |
+            jniLibs
+            bindings
+
+
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: [build_ios, build_android]
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Download iOS artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: MathSdk
+          path: release/MathSdk
+
+      - name: Download Android artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: android-artifacts
+          path: release/android
+
+      - name: Zip Artifacts
+        run: |
+          cd release
+          zip -r MathSdk.zip MathSdk
+          zip -r android-artifacts.zip android
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: "Release ${{ github.ref_name }}"
+          files: |
+            release/MathSdk.zip
+            release/android-artifacts.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
