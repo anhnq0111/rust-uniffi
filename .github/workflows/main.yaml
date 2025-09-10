@@ -102,7 +102,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: MathSdk
-          path: release/ios
+          path: release/MathSdk
 
       - name: Download Android artifacts
         uses: actions/download-artifact@v4
@@ -113,7 +113,7 @@ jobs:
       - name: Zip Artifacts
         run: |
           cd release
-          zip -r MathSdk.zip ios
+          zip -r MathSdk.zip MathSdk
           zip -r android-artifacts.zip android
 
       - name: Create GitHub Release
@@ -122,7 +122,7 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: "Release ${{ github.ref_name }}"
           files: |
-            release/ios-artifacts.zip
+            release/MathSdk.zip
             release/android-artifacts.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
