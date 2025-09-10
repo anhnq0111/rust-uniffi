@@ -74,9 +74,6 @@ jobs:
           add-to-path: false
 
       - name: Build Android SDK + bindings
-        env:
-          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
-          ANDROID_NDK_ROOT: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: |
           cargo ndk -t armeabi-v7a -t arm64-v8a -o ./jniLibs build --release
           cargo run --features=uniffi/cli --bin uniffi_bindgen generate \
